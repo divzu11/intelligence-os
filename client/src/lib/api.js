@@ -1,6 +1,11 @@
+import { mockRequest, DEMO } from './mockApi'
+
 const BASE = ''
 
 async function request(path, options = {}) {
+  // Demo mode: serve everything from local sample data — no backend required.
+  if (DEMO) return mockRequest(path, options)
+
   const res = await fetch(BASE + path, {
     headers: { 'Content-Type': 'application/json', ...options.headers },
     ...options,

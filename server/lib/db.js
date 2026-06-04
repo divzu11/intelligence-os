@@ -36,7 +36,7 @@ export async function seedSources() {
 
 // ── Articles ──────────────────────────────────────────────────────────────────
 
-export async function getArticles({ section, geo, limit = 50, offset = 0 } = {}) {
+export async function getArticles({ section, geo, since, limit = 50, offset = 0 } = {}) {
   const db = getClient()
   let query = db
     .from('articles')
@@ -49,6 +49,7 @@ export async function getArticles({ section, geo, limit = 50, offset = 0 } = {})
 
   if (section) query = query.eq('section', section)
   if (geo)     query = query.eq('geo', geo)
+  if (since)   query = query.gte('published_at', since)
 
   const { data, error } = await query
   if (error) throw new Error(error.message)
@@ -127,18 +128,30 @@ export async function getTrends() {
 }
 
 export async function getTrendArticles(topic) {
+  // Step 1: find all article IDs tagged with this topic
+  const { data: tagData, error: tagError } = await getClient()
+    .from('tags')
+    .select('article_id')
+    .contains('topics', [topic])
+
+  if (tagError) throw new Error(tagError.message)
+  const articleIds = (tagData || []).map(t => t.article_id).filter(Boolean)
+  if (articleIds.length === 0) return []
+
+  // Step 2: fetch those articles filtered by published_at (last 30 days)
   const thirtyDaysAgo = new Date()
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
   const { data, error } = await getClient()
-    .from('tags')
-    .select('article_id, articles(id, title, url, source_name, section, geo, published_at)')
-    .contains('topics', [topic])
-    .gte('created_at', thirtyDaysAgo.toISOString())
+    .from('articles')
+    .select('id, title, url, source_name, section, geo, published_at')
+    .in('id', articleIds)
+    .gte('published_at', thirtyDaysAgo.toISOString())
+    .order('published_at', { ascending: false })
     .limit(20)
 
   if (error) throw new Error(error.message)
-  return (data || []).map(t => t.articles).filter(Boolean)
+  return data || []
 }
 
 // ── Archive / Search ──────────────────────────────────────────────────────────

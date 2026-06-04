@@ -48,12 +48,26 @@ export async function runAnalysis() {
       ...Object.keys(lastWeekCounts),
     ])
 
+    // Build first_seen map in one query instead of N per-topic queries
+    const { data: allTagRows } = await getClient()
+      .from('tags')
+      .select('topics, created_at')
+      .order('created_at', { ascending: true })
+    const firstSeenMap = {}
+    for (const row of (allTagRows || [])) {
+      for (const topic of (row.topics || [])) {
+        if (!firstSeenMap[topic]) firstSeenMap[topic] = row.created_at
+      }
+    }
+
     let upsertCount = 0
     for (const topic of allTopics) {
       const thisWeek = thisWeekCounts[topic] || 0
       const lastWeek = lastWeekCounts[topic] || 0
 
-      if (thisWeek === 0) continue // Not seen this week — skip
+      // Spec: a topic only qualifies as a trend with >= 3 mentions this week.
+      // This filters single-mention noise and keeps the radar meaningful.
+      if (thisWeek < 3) continue
 
       const velocity = ((thisWeek - lastWeek) / Math.max(lastWeek, 1)) * 100
 
@@ -63,16 +77,7 @@ export async function runAnalysis() {
       else if (velocity < -30) status = 'fading'
       else status = 'peaked'
 
-      // Get first seen date
-      const { data: firstSeenData } = await getClient()
-        .from('tags')
-        .select('created_at')
-        .contains('topics', [topic])
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .single()
-
-      const firstSeen = firstSeenData?.created_at || now.toISOString()
+      const firstSeen = firstSeenMap[topic] || now.toISOString()
 
       const { error: upsertError } = await getClient()
         .from('trends')

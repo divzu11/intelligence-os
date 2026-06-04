@@ -1,11 +1,17 @@
 import Anthropic from '@anthropic-ai/sdk'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const MODEL = 'claude-sonnet-4-6'
+
+// Cached system prompt block — reused across all summary calls to save tokens
+const ANALYST_SYSTEM = [{
+  type: 'text',
+  text: 'You are a healthcare intelligence analyst writing for a busy healthcare operator and investor.',
+  cache_control: { type: 'ephemeral' },
+}]
 
 export async function generateSummary(title, content) {
-  const prompt = `You are a healthcare intelligence analyst writing for a busy healthcare operator and investor.
-
-Article title: ${title}
+  const userPrompt = `Article title: ${title}
 Article content: ${content}
 
 Provide three things:
@@ -21,9 +27,10 @@ Return as JSON:
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: MODEL,
       max_tokens: 1024,
-      messages: [{ role: 'user', content: prompt }]
+      system: ANALYST_SYSTEM,
+      messages: [{ role: 'user', content: userPrompt }],
     })
     const text = response.content[0].text
     const json = JSON.parse(text.match(/\{[\s\S]*\}/)[0])
@@ -40,7 +47,7 @@ Return as JSON:
 }
 
 export async function generateTags(title, content) {
-  const prompt = `Extract structured tags from this healthcare article.
+  const tagPrompt = `Extract structured tags from this healthcare article.
 
 Title: ${title}
 Content: ${content}
@@ -60,9 +67,10 @@ Keep each array to maximum 4 items. Only include what is explicitly mentioned.`
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: MODEL,
       max_tokens: 512,
-      messages: [{ role: 'user', content: prompt }]
+      system: ANALYST_SYSTEM,
+      messages: [{ role: 'user', content: tagPrompt }],
     })
     const text = response.content[0].text
     return JSON.parse(text.match(/\{[\s\S]*\}/)[0])
@@ -73,9 +81,7 @@ Keep each array to maximum 4 items. Only include what is explicitly mentioned.`
 }
 
 export async function generateWeeklyMemo(articlesJson, trendsJson) {
-  const prompt = `You are an intelligence analyst writing a weekly briefing for a healthcare operator and investor.
-
-Top articles this week:
+  const memoPrompt = `Top articles this week:
 ${articlesJson}
 
 Trending topics this week:
@@ -97,11 +103,18 @@ One paragraph on a trend playing out in the US that shows early signs of emergin
 
 Write in direct, confident prose. No bullet points. No hedging language.`
 
+  const memoSystem = [{
+    type: 'text',
+    text: 'You are an intelligence analyst writing a weekly briefing for a healthcare operator and investor.',
+    cache_control: { type: 'ephemeral' },
+  }]
+
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: MODEL,
       max_tokens: 2048,
-      messages: [{ role: 'user', content: prompt }]
+      system: memoSystem,
+      messages: [{ role: 'user', content: memoPrompt }],
     })
     return response.content[0].text
   } catch (err) {
@@ -111,7 +124,7 @@ Write in direct, confident prose. No bullet points. No hedging language.`
 }
 
 export async function askArchive(question, articlesJson) {
-  const prompt = `Answer this question using only the articles provided. Do not use outside knowledge.
+  const archivePrompt = `Answer this question using only the articles provided. Do not use outside knowledge.
 
 Articles from the user's reading history:
 ${articlesJson}
@@ -122,9 +135,9 @@ Answer in 150-200 words. Cite specific article titles where relevant. If the art
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: MODEL,
       max_tokens: 1024,
-      messages: [{ role: 'user', content: prompt }]
+      messages: [{ role: 'user', content: archivePrompt }],
     })
     return response.content[0].text
   } catch (err) {

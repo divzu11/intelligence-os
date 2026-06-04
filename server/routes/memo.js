@@ -49,7 +49,12 @@ router.post('/generate', async (req, res) => {
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
-    const articles = await getArticles({ limit: 30, offset: 0 })
+    let articles = await getArticles({ since: sevenDaysAgo.toISOString(), limit: 30, offset: 0 })
+    // Fall back to the latest 30 overall if nothing was published in the last week
+    // (e.g. early days before feeds have filled in) so the memo is never empty.
+    if (articles.length === 0) {
+      articles = await getArticles({ limit: 30, offset: 0 })
+    }
     const trends = await getTrends()
     const topTrends = trends.slice(0, 10)
 
